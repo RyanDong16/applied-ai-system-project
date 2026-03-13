@@ -53,12 +53,6 @@ if "history" not in st.session_state:
 
 st.subheader("Make a guess")
 
-st.info(
-    # FIX: the instructions should reflect the actual range and attempt limit for the current difficulty level
-    f"Guess a number between {low} and {high}. "
-    f"Attempts left: {attempt_limit - st.session_state.attempts}"
-)
-
 with st.expander("Developer Debug Info"):
     st.write("Secret:", st.session_state.secret)
     st.write("Attempts:", st.session_state.attempts)
@@ -139,6 +133,12 @@ if submit:
                     f"The secret was {st.session_state.secret}. "
                     f"Score: {st.session_state.score}"
                 )
+
+st.info(
+    # FIX: the instructions should reflect the actual range and attempt limit for the current difficulty level
+    f"Guess a number between {low} and {high}. "
+    f"Attempts left: {attempt_limit - st.session_state.attempts}"
+)
 
 st.divider()
 st.caption("Built by an AI that claims this code is production-ready.")

@@ -1,4 +1,4 @@
-#FIX: I implemented the missing game logic in logic_utils.py (matching the original app.py code and correcting the string‑comparison bug) and then added a focused regression test in test_game_logic.py
+#FIX: Refactored logic into logic_utils.py using Copilot Agent mode).
 
 def get_range_for_difficulty(difficulty: str):
     """Return (low, high) inclusive range for a given difficulty."""

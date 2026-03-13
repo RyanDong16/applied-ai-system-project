@@ -27,7 +27,7 @@ Answer each question in 3 to 5 sentences. Be specific and honest about what actu
 + One example of an AI suggestion being correct was with the check_guess function. The AI suggested that when the guess is too high, the message should says "Go LOWER". When the guess is too low, the message should says "Go HIGHER". The AI Agent refactor my code to work correctly because through verification, whenever I guessed a high number to the secret number, the hint message returns to tell me to go lower with my guess. The same thing occurs when I guessed a low number to the secret number, the hint message returns to tell me to go higher with my guess.
 
 - Give one example of an AI suggestion that was incorrect or misleading (including what the AI suggested and how you verified the result).
-+ 
++ One exampleof an AI suggestion being incorrect was when the AI Agent recommended that create a virtual environment to solve the correction to the banner 'attempt left' counter. Although the suggestion of creating a virtual environment does not have an impact on fixing the bug, the recommendation to use a virtual environment was incorrect.
 ---
 
 ## 3. Debugging and testing your fixes
@@ -37,10 +37,10 @@ Answer each question in 3 to 5 sentences. Be specific and honest about what actu
 
 - Describe at least one test you ran (manual or using pytest)  
   and what it showed you about your code.
-+
++ I ran using python -m pytest tests/test_game_logic.py::test_string_secret_too_high -q and it returned with the test passing. It confirmed the logic in logic_utils.check_guess() as correct and handled numeric comparison even when the secret is a string. The newly added test verifies that check_guess(30, "20") returns "Too High", proving the bug fix works for string‑stored secrets.
 
 - Did AI help you design or understand any tests? How?
-+ 
++ Yes, the AI helped design the test_game_logic.py. The AI also helped me better understand what the code means and how it was testing in regards to the hint message returning the correct hint of higher or lower.
 
 
 ---
@@ -48,6 +48,7 @@ Answer each question in 3 to 5 sentences. Be specific and honest about what actu
 ## 4. What did you learn about Streamlit and state?
 
 - How would you explain Streamlit "reruns" and session state to a friend who has never used Streamlit?
++ Streamlit reruns your entire app script from top to bottom every time something happens, like a button click, to make the interface interactive and update instantly. Session state is like a persistent storage that remembers key data across these reruns, so things like user inputs or game scores don't get wiped out each time. Together, they let you build apps that feel smooth and continuous without worrying about complex web programming.
 
 ---
 
@@ -55,5 +56,10 @@ Answer each question in 3 to 5 sentences. Be specific and honest about what actu
 
 - What is one habit or strategy from this project that you want to reuse in future labs or projects?
   - This could be a testing habit, a prompting strategy, or a way you used Git.
+  + On strategy I would reuse in future labs to creating test_game_logic code and using the AI Agent to refactor code that I verified.
+
 - What is one thing you would do differently next time you work with AI on a coding task?
++ One thing I would do differently next time is using the AI Agent to brainstorm ideas before refactoring the correct code. By doing a brainstorm first, I could take the problem in different ways that could be more effective and efficient.
+
 - In one or two sentences, describe how this project changed the way you think about AI generated code.
++ With this project, I realize that you need to verify the code that the AI generates. Furthermore, you should never blindly believe the AI generated code before you view the code with your own eyes and critical thinking.

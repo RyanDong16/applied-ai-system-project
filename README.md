@@ -221,3 +221,16 @@ Throughout this project, AI was used as a development assistant to help design, 
 - AI was helpful when it suggested separating the game logic into `logic_utils.py`, which made the code easier to test, maintain, and extend.
 
 - One time the AI was flawed was when the AI-generated logic introduced inconsistent behavior by mixing string and integer comparisons. This caused incorrect results and required debugging and validation tests to fix.
+
+
+
+## DEMO
+
+<div>
+    <a href="https://www.loom.com/share/8b3ac0cb9d75420b800e54cb99256518">
+      <p>AI110 Final Project Walkthrough - Watch Video</p>
+    </a>
+    <a href="https://www.loom.com/share/8b3ac0cb9d75420b800e54cb99256518">
+      <img style="max-width:300px;" src="https://cdn.loom.com/sessions/thumbnails/8b3ac0cb9d75420b800e54cb99256518-f0e2fb6346ecd898-full-play.gif#t=0.1">
+    </a>
+  </div>

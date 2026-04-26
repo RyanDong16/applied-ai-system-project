@@ -7,10 +7,12 @@ from logic_utils import (
     GAME_STATUS_LOST,
     GAME_STATUS_PLAYING,
     GAME_STATUS_WON,
-    DEFAULT_DIFFICULTY,
     DEFAULT_SCORE,
+    build_game_state_summary,
     check_guess,
     configure_logging,
+    evaluate_ai_consistency,
+    generate_ai_hint,
     get_attempt_limit,
     get_range_for_difficulty,
     log_game_event,
@@ -20,14 +22,13 @@ from logic_utils import (
     validate_game_state,
 )
 
-# Ensure log directory exists and logging is configured once.
 Path("logs").mkdir(exist_ok=True)
 logger = configure_logging("logs/game.log")
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
 
 st.title("🎮 Game Glitch Investigator")
-st.caption("An AI-generated guessing game with reliability guardrails built in.")
+st.caption("An AI-generated guessing game with reliability guardrails and AI consistency checks.")
 
 st.sidebar.header("Settings")
 
@@ -40,16 +41,8 @@ difficulty = st.sidebar.selectbox(
 attempt_limit = get_attempt_limit(difficulty)
 low, high = get_range_for_difficulty(difficulty)
 
-st.sidebar.caption(f"Range: {low} to {high}")
-st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
-
-VALID_STATUSES = {GAME_STATUS_PLAYING, GAME_STATUS_WON, GAME_STATUS_LOST}
-
 
 def initialize_game_state(selected_difficulty: str) -> None:
-    """
-    Initialize missing session state keys safely.
-    """
     range_low, range_high = get_range_for_difficulty(selected_difficulty)
 
     if "difficulty" not in st.session_state:
@@ -74,9 +67,6 @@ def initialize_game_state(selected_difficulty: str) -> None:
 
 
 def reset_game(selected_difficulty: str, preserve_score: bool = False) -> None:
-    """
-    Reset the game safely for the selected difficulty.
-    """
     range_low, range_high = get_range_for_difficulty(selected_difficulty)
     st.session_state.difficulty = selected_difficulty
     st.session_state.secret = random.randint(range_low, range_high)
@@ -97,9 +87,6 @@ def reset_game(selected_difficulty: str, preserve_score: bool = False) -> None:
 
 
 def recover_invalid_state(selected_difficulty: str, reasons: list[str]) -> None:
-    """
-    Recover from invalid or corrupted game state.
-    """
     old_score = st.session_state.get("score", DEFAULT_SCORE)
 
     reset_game(selected_difficulty, preserve_score=False)
@@ -116,7 +103,6 @@ def recover_invalid_state(selected_difficulty: str, reasons: list[str]) -> None:
 
 initialize_game_state(difficulty)
 
-# Handle difficulty change as a meaningful state transition.
 if st.session_state.get("difficulty") != difficulty:
     log_game_event(
         logger,
@@ -128,7 +114,6 @@ if st.session_state.get("difficulty") != difficulty:
     st.success(f"Difficulty changed to {difficulty}. A new game has started.")
     st.rerun()
 
-# Validate state before rendering major interactions.
 is_valid, validation_errors = validate_game_state(
     secret=st.session_state.secret,
     attempts=st.session_state.attempts,
@@ -147,6 +132,10 @@ if not is_valid:
     )
     st.rerun()
 
+st.sidebar.subheader("Game Rules")
+st.sidebar.caption(f"Range: {low} to {high}")
+st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
+
 st.subheader("Make a guess")
 
 with st.expander("Developer Debug Info"):
@@ -156,6 +145,17 @@ with st.expander("Developer Debug Info"):
     st.write("Difficulty:", difficulty)
     st.write("History:", st.session_state.history)
     st.write("Status:", st.session_state.status)
+    st.write(
+        "Game State Summary:",
+        build_game_state_summary(
+            low=low,
+            high=high,
+            attempts=st.session_state.attempts,
+            attempt_limit=attempt_limit,
+            history=st.session_state.history,
+            status=st.session_state.status,
+        ),
+    )
 
 raw_guess = st.text_input(
     "Enter your guess:",
@@ -168,7 +168,19 @@ with col1:
 with col2:
     new_game = st.button("New Game 🔁")
 with col3:
-    show_hint = st.checkbox("Show hint", value=True)
+    show_ai_hint = st.checkbox("Show AI hint", value=True)
+
+consistency_col1, consistency_col2 = st.columns(2)
+with consistency_col1:
+    run_ai_consistency_check = st.button("Run AI Consistency Check 🧪")
+with consistency_col2:
+    consistency_runs = st.number_input(
+        "Consistency runs",
+        min_value=3,
+        max_value=25,
+        value=10,
+        step=1,
+    )
 
 if new_game:
     reset_game(difficulty, preserve_score=False)
@@ -181,6 +193,37 @@ if st.session_state.status != GAME_STATUS_PLAYING:
     else:
         st.error("Game over. Start a new game to try again.")
     st.stop()
+
+if run_ai_consistency_check:
+    report = evaluate_ai_consistency(
+        secret=st.session_state.secret,
+        history=st.session_state.history,
+        low=low,
+        high=high,
+        attempt_limit=attempt_limit,
+        runs_per_case=int(consistency_runs),
+    )
+    log_game_event(
+        logger,
+        "ai_consistency_check_run",
+        runs_per_case=int(consistency_runs),
+        average_consistency=report["average_consistency"],
+        total_guardrail_violations=report["total_guardrail_violations"],
+    )
+
+    st.subheader("AI Consistency Report")
+    st.write("Average consistency:", f"{report['average_consistency']:.2f}")
+    st.write("Total guardrail violations:", report["total_guardrail_violations"])
+    st.write("Overall status:", report["overall_status"])
+
+    for case in report["cases"]:
+        with st.expander(f"Case: {case['case_name']}"):
+            st.write("Guess:", case["guess"])
+            st.write("Expected category:", case["expected_category"])
+            st.write("Category counts:", case["category_counts"])
+            st.write("Consistency rate:", f"{case['consistency_rate']:.2f}")
+            st.write("Guardrail violations:", case["guardrail_violations"])
+            st.write("Sample outputs:", case["sample_outputs"])
 
 if submit:
     try:
@@ -200,7 +243,6 @@ if submit:
         else:
             next_attempt_number = st.session_state.attempts + 1
 
-            # Pre-check before mutating critical state.
             if next_attempt_number > attempt_limit:
                 log_game_event(
                     logger,
@@ -221,8 +263,18 @@ if submit:
 
             outcome, message = check_guess(guess_int, st.session_state.secret)
 
-            if show_hint:
-                st.warning(message)
+            ai_hint = generate_ai_hint(
+                secret=st.session_state.secret,
+                guess=guess_int,
+                history=st.session_state.history,
+                low=low,
+                high=high,
+                attempts=st.session_state.attempts,
+                attempt_limit=attempt_limit,
+            )
+
+            if show_ai_hint:
+                st.warning(f"AI hint: {ai_hint}")
 
             old_score = st.session_state.score
             st.session_state.score = update_score(
@@ -236,10 +288,12 @@ if submit:
                 "guess_submitted",
                 guess=guess_int,
                 outcome=outcome,
+                rule_message=message,
+                ai_hint=ai_hint,
                 attempts=st.session_state.attempts,
                 score_before=old_score,
                 score_after=st.session_state.score,
-                show_hint=show_hint,
+                show_ai_hint=show_ai_hint,
             )
 
             if outcome == "Win":
@@ -272,7 +326,6 @@ if submit:
                         f"Score: {st.session_state.score}"
                     )
 
-            # Post-check after updates.
             is_valid_after, validation_errors_after = validate_game_state(
                 secret=st.session_state.secret,
                 attempts=st.session_state.attempts,
@@ -316,4 +369,6 @@ st.info(
 )
 
 st.divider()
-st.caption("Built by an AI that now logs its behavior and validates game state.")
+st.caption(
+    "Built by an AI that now validates state, logs behavior, and can test whether its own hints stay consistent."
+)

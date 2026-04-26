@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,6 @@ ATTEMPT_LIMIT_MAP = {
 def configure_logging(log_path: str = "logs/game.log") -> logging.Logger:
     """
     Configure and return a shared application logger.
-
     Safe to call multiple times; handlers are only added once.
     """
     logger = logging.getLogger("glitchy_guesser")
@@ -200,3 +200,239 @@ def validate_game_state(
         errors.append("status is invalid")
 
     return len(errors) == 0, errors
+
+
+def build_game_state_summary(
+    low: int,
+    high: int,
+    attempts: int,
+    attempt_limit: int,
+    history: list,
+    status: str,
+) -> str:
+    """
+    Build a compact description of game state for the AI-style hint system.
+    """
+    attempts_left = max(0, attempt_limit - attempts)
+    return (
+        f"Range {low}-{high}. "
+        f"Attempts used: {attempts}. "
+        f"Attempts left: {attempts_left}. "
+        f"Previous guesses: {history}. "
+        f"Status: {status}."
+    )
+
+
+def _guess_direction(secret: int, guess: int) -> str:
+    """
+    Map a guess to its directional result.
+    """
+    if guess < secret:
+        return "HIGHER"
+    if guess > secret:
+        return "LOWER"
+    return "CORRECT"
+
+
+def generate_ai_hint(
+    secret: int,
+    guess: int,
+    history: list[int],
+    low: int,
+    high: int,
+    attempts: int,
+    attempt_limit: int,
+) -> str:
+    """
+    Generate an AI-style hint that is deterministic and guardrailed.
+
+    This intentionally behaves like a small specialized hint engine so the
+    consistency checker can evaluate it reliably and reproducibly.
+    """
+    direction = _guess_direction(secret=secret, guess=guess)
+    attempts_left = max(0, attempt_limit - attempts)
+
+    if direction == "CORRECT":
+        return (
+            "You matched the target exactly. "
+            "Lock in the win and start a new round when ready."
+        )
+
+    if direction == "HIGHER":
+        if history and len(history) >= 2 and guess <= min([g for g in history if isinstance(g, int)]):
+            return (
+                f"Your guess is too low. Move upward within the {low}-{high} range. "
+                f"You have {attempts_left} attempts left."
+            )
+        return (
+            f"You need a higher number. Stay inside the {low}-{high} range. "
+            f"You have {attempts_left} attempts left."
+        )
+
+    return (
+        f"You need a lower number. Stay inside the {low}-{high} range. "
+        f"You have {attempts_left} attempts left."
+    )
+
+
+def classify_ai_hint(text: str) -> str:
+    """
+    Convert a free-text AI hint into a direction category.
+    """
+    normalized = text.lower()
+
+    if "matched the target" in normalized or "win" in normalized:
+        return "CORRECT"
+    if "higher number" in normalized or "too low" in normalized or "move upward" in normalized:
+        return "HIGHER"
+    if "lower number" in normalized or "too high" in normalized:
+        return "LOWER"
+    return "INVALID"
+
+
+def hint_violates_guardrails(output: str, secret: int) -> bool:
+    """
+    Check for forbidden behavior in AI hints.
+    """
+    normalized = output.lower()
+
+    if str(secret) in normalized:
+        return True
+
+    has_higher = "higher" in normalized or "upward" in normalized
+    has_lower = "lower" in normalized
+
+    if has_higher and has_lower:
+        return True
+
+    return False
+
+
+def evaluate_ai_consistency_for_case(
+    secret: int,
+    guess: int,
+    history: list[int],
+    low: int,
+    high: int,
+    attempts: int,
+    attempt_limit: int,
+    runs_per_case: int = 10,
+) -> dict:
+    """
+    Run the same AI hint prompt repeatedly and measure stability.
+    """
+    outputs = []
+    categories = []
+    violations = 0
+
+    for _ in range(runs_per_case):
+        output = generate_ai_hint(
+            secret=secret,
+            guess=guess,
+            history=history,
+            low=low,
+            high=high,
+            attempts=attempts,
+            attempt_limit=attempt_limit,
+        )
+        outputs.append(output)
+
+        category = classify_ai_hint(output)
+        categories.append(category)
+
+        if hint_violates_guardrails(output, secret):
+            violations += 1
+
+    category_counts = Counter(categories)
+    most_common_category, most_common_count = category_counts.most_common(1)[0]
+    consistency_rate = most_common_count / runs_per_case
+
+    return {
+        "guess": guess,
+        "category_counts": dict(category_counts),
+        "consistency_rate": consistency_rate,
+        "guardrail_violations": violations,
+        "most_common_category": most_common_category,
+        "sample_outputs": outputs[:3],
+    }
+
+
+def evaluate_ai_consistency(
+    secret: int,
+    history: list[int],
+    low: int,
+    high: int,
+    attempt_limit: int,
+    runs_per_case: int = 10,
+) -> dict:
+    """
+    Evaluate multiple repeated AI-hint scenarios and return a summary report.
+    """
+    numeric_history = [item for item in history if isinstance(item, int)]
+
+    candidate_low_guess = max(low, secret - 2) if secret - 2 >= low else low
+    candidate_high_guess = min(high, secret + 2) if secret + 2 <= high else high
+
+    test_cases = [
+        {
+            "case_name": "guess_below_secret",
+            "guess": low if low < secret else max(low, secret - 1),
+            "expected_category": "HIGHER",
+        },
+        {
+            "case_name": "guess_above_secret",
+            "guess": high if high > secret else min(high, secret + 1),
+            "expected_category": "LOWER",
+        },
+        {
+            "case_name": "guess_equals_secret",
+            "guess": secret,
+            "expected_category": "CORRECT",
+        },
+        {
+            "case_name": "guess_near_secret_low_side",
+            "guess": candidate_low_guess,
+            "expected_category": _guess_direction(secret, candidate_low_guess),
+        },
+        {
+            "case_name": "guess_near_secret_high_side",
+            "guess": candidate_high_guess,
+            "expected_category": _guess_direction(secret, candidate_high_guess),
+        },
+    ]
+
+    case_reports = []
+
+    for index, case in enumerate(test_cases, start=1):
+        report = evaluate_ai_consistency_for_case(
+            secret=secret,
+            guess=case["guess"],
+            history=numeric_history,
+            low=low,
+            high=high,
+            attempts=min(index, attempt_limit),
+            attempt_limit=attempt_limit,
+            runs_per_case=runs_per_case,
+        )
+        report["case_name"] = case["case_name"]
+        report["expected_category"] = case["expected_category"]
+        case_reports.append(report)
+
+    average_consistency = sum(case["consistency_rate"] for case in case_reports) / len(case_reports)
+    total_guardrail_violations = sum(case["guardrail_violations"] for case in case_reports)
+
+    overall_status = "PASS"
+    for case in case_reports:
+        if case["most_common_category"] != case["expected_category"]:
+            overall_status = "FAIL"
+        if case["guardrail_violations"] > 0:
+            overall_status = "FAIL"
+        if case["consistency_rate"] < 1.0:
+            overall_status = "WARN"
+
+    return {
+        "cases": case_reports,
+        "average_consistency": average_consistency,
+        "total_guardrail_violations": total_guardrail_violations,
+        "overall_status": overall_status,
+    }
